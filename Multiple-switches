@@ -2,7 +2,7 @@ blueprint:
   name: Synchronize multiple Switches/Lights
   description: >
     ## Bind multiple switches or lights together to act in unison
-    🔥**Version**: v3.2
+    🔥**Version**: v4.0
   domain: automation
   input:
     entities:
@@ -10,7 +10,6 @@ blueprint:
       description: Select two or more switches or lights to act together.
       selector:
         entity:
-          domain: switch,light
           multiple: true
 
 trigger:
@@ -35,6 +34,11 @@ action:
               sequence:
                 - service_template: >
                     {% if changed_state == "on" %}
+                      homeassistant.turn_on
+                    {% else %}
+                      homeassistant.turn_off
+                    {% endif %}
+                  entity_id: "{{ repeat.item }}"                    {% if changed_state == "on" %}
                       homeassistant.turn_on
                     {% else %}
                       homeassistant.turn_off
