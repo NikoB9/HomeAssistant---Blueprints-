@@ -2,7 +2,7 @@ blueprint:
   name: Synchronize multiple Switches/Lights
   description: >
     ## Bind multiple switches or lights together to act in unison
-    🔥**Version**: v3.1
+    🔥**Version**: v3.2
   domain: automation
   input:
     entities:
@@ -33,111 +33,10 @@ action:
                 - '{{ repeat.item != trigger.entity_id }}'
                 - '{{ states(repeat.item) != changed_state }}'
               sequence:
-                - service: >
+                - service_template: >
                     {% if changed_state == "on" %}
                       homeassistant.turn_on
                     {% else %}
                       homeassistant.turn_off
                     {% endif %}
-                  entity_id: "{{ repeat.item }}"mode: single
-
-condition:
-  '{{ trigger.to_state.state != trigger.from_state.state }}'
-
-action:
-  - choose:
-      - conditions:
-          - '{{ trigger.entity_id != entity_1 }}'
-          - '{{ trigger.to_state.state != states(entity_1) }}'
-        sequence:
-          - service: >
-              {% if trigger.to_state.state == "on" %}
-                homeassistant.turn_on
-              {% else %}
-                homeassistant.turn_off
-              {% endif %}
-            entity_id: !input entity_1
-
-  - choose:
-      - conditions:
-          - '{{ trigger.entity_id != entity_2 }}'
-          - '{{ trigger.to_state.state != states(entity_2) }}'
-        sequence:
-          - service: >
-              {% if trigger.to_state.state == "on" %}
-                homeassistant.turn_on
-              {% else %}
-                homeassistant.turn_off
-              {% endif %}
-            entity_id: !input entity_2
-
-  - choose:
-      - conditions:
-          - '{{ trigger.entity_id != entity_3 }}'
-          - '{{ trigger.to_state.state != states(entity_3) }}'
-        sequence:
-          - service: >
-              {% if trigger.to_state.state == "on" %}
-                homeassistant.turn_on
-              {% else %}
-                homeassistant.turn_off
-              {% endif %}
-            entity_id: !input entity_3
-
-  - choose:
-      - conditions:
-          - '{{ trigger.entity_id != entity_4 }}'
-          - '{{ trigger.to_state.state != states(entity_4) }}'
-        sequence:
-          - service: >
-              {% if trigger.to_state.state == "on" %}
-                homeassistant.turn_on
-              {% else %}
-                homeassistant.turn_off
-              {% endif %}
-            entity_id: !input entity_4trigger:
-  - platform: state
-    entity_id: 
-      - !input switch_1
-      - !input switch_2
-      - !input switch_3
-      - !input switch_4
-
-mode: single
-
-condition:
-  '{{ trigger.to_state.state != trigger.from_state.state }}'
-
-action:
-  # Set to target value
-  - choose:
-    - conditions:
-      - '{{ trigger.entity_id != switch_1 }}'
-      - '{{ trigger.to_state.state != states(switch_1) }}'
-      sequence:
-        - service: 'switch.turn_{{ trigger.to_state.state }}'
-          entity_id: !input switch_1
-
-  - choose:
-    - conditions:
-      - '{{ trigger.entity_id != switch_2 }}'
-      - '{{ trigger.to_state.state != states(switch_2) }}'
-      sequence:
-        - service: 'switch.turn_{{ trigger.to_state.state }}'
-          entity_id: !input switch_2
-
-  - choose:
-    - conditions:
-      - '{{ trigger.entity_id != switch_3 }}'
-      - '{{ trigger.to_state.state != states(switch_3) }}'
-      sequence:
-        - service: 'switch.turn_{{ trigger.to_state.state }}'
-          entity_id: !input switch_3
-
-  - choose:
-    - conditions:
-      - '{{ trigger.entity_id != switch_4 }}'
-      - '{{ trigger.to_state.state != states(switch_4) }}'
-      sequence:
-        - service: 'switch.turn_{{ trigger.to_state.state }}'
-          entity_id: !input switch_4
+                  entity_id: "{{ repeat.item }}"
