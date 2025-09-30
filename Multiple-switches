@@ -1,40 +1,45 @@
 blueprint:
-  name: Synchronize 4 Way (Switch & Light)
+  name: Synchronize multiple Switches/Lights
   description: >
-    ## Bind Four switches or lights together to act in unison
-    
-    🔥**Version**: v2.0
-  source_url: https://github.com/NikoB9/HomeAssistant---Blueprints-.git
+    ## Bind multiple switches or lights together to act in unison
+    🔥**Version**: v3.0
   domain: automation
   input:
-    entity_1:
-      name: Entity 1
+    entities:
+      name: Entities to synchronize
+      description: Select two or more switches or lights to act together.
       selector:
         entity:
           domain: switch,light
-    entity_2:
-      name: Entity 2
-      selector:
-        entity:
-          domain: switch,light
-    entity_3:
-      name: Entity 3
-      selector:
-        entity:
-          domain: switch,light
-    entity_4:
-      name: Entity 4
-      selector:
-        entity:
-          domain: switch,light
-
-variables:
-  entity_1: !input entity_1
-  entity_2: !input entity_2
-  entity_3: !input entity_3
-  entity_4: !input entity_4
+          multiple: true
 
 trigger:
+  - platform: state
+    entity_id: !input entities
+
+mode: single
+
+condition:
+  '{{ trigger.to_state.state != trigger.from_state.state }}'
+
+action:
+  - variables:
+      changed_state: '{{ trigger.to_state.state }}'
+  - repeat:
+      for_each: !input entities
+      sequence:
+        - choose:
+            - conditions:
+                - '{{ repeat.item != trigger.entity_id }}'
+                - '{{ states(repeat.item) != changed_state }}'
+              sequence:
+                - service: >
+                    {% if changed_state == "on" %}
+                      homeassistant.turn_on
+                    {% else %}
+                      homeassistant.turn_off
+                    {% endif %}
+                  entity_id: '{{ repeat.item }}'trigger:
   - platform: state
     entity_id: 
       - !input entity_1
