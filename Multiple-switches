@@ -2,7 +2,7 @@ blueprint:
   name: Synchronize multiple Switches/Lights
   description: >
     ## Bind multiple switches or lights together to act in unison
-    🔥 **Version**: v5 (optimized ZHA / Tuya)
+    🔥 **Version**: v5.1 (optimized ZHA / Tuya)
     - Parallel service calls
     - Double-press protection
     - Prevents desynchronization
@@ -47,8 +47,9 @@ action:
   - variables:
       new_state: "{{ trigger.to_state.state }}"
       source: "{{ trigger.entity_id }}"
+      all_entities: !input entities
       targets: >
-        {{ expand(!input entities)
+        {{ expand(all_entities)
            | rejectattr('entity_id', 'eq', source)
            | rejectattr('state', 'eq', new_state)
            | map(attribute='entity_id')
