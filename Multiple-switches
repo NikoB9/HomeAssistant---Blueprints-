@@ -2,8 +2,13 @@ blueprint:
   name: Synchronize multiple Switches/Lights
   description: >
     ## Bind multiple switches or lights together to act in unison
-    🔥**Version**: v4.3
+    🔥 **Version**: v5 (optimized ZHA / Tuya)
+    - Parallel service calls
+    - Double-press protection
+    - Prevents desynchronization
+    - Designed for Zigbee (ZHA)
   domain: automation
+
   input:
     entities:
       name: Entities to synchronize
@@ -12,26 +17,51 @@ blueprint:
         entity:
           multiple: true
 
+    debounce:
+      name: Debounce time (ms)
+      description: Minimum time the state must remain stable before synchronization.
+      default: 200
+      selector:
+        number:
+          min: 0
+          max: 1000
+          unit_of_measurement: ms
+          mode: slider
+
+mode: restart
+max_exceeded: silent
+
 trigger:
   - platform: state
     entity_id: !input entities
-
-mode: single
+    for:
+      milliseconds: !input debounce
 
 condition:
-  '{{ trigger.to_state.state != trigger.from_state.state }}'
+  - condition: template
+    value_template: >
+      {{ trigger.to_state.state in ['on', 'off']
+         and trigger.to_state.state != trigger.from_state.state }}
 
 action:
   - variables:
-      changed_state: '{{ trigger.to_state.state }}'
-  - repeat:
-      for_each: !input entities
-      sequence:
-        - choose:
-            - conditions:
-                - '{{ repeat.item != trigger.entity_id }}'
-                - '{{ states(repeat.item) != changed_state }}'
-              sequence:
-                - service: "{{ 'homeassistant.turn_on' if changed_state == 'on' else 'homeassistant.turn_off' }}"
-                  target:
-                    entity_id: "{{ repeat.item }}"
+      new_state: "{{ trigger.to_state.state }}"
+      source: "{{ trigger.entity_id }}"
+      targets: >
+        {{ expand(!input entities)
+           | rejectattr('entity_id', 'eq', source)
+           | rejectattr('state', 'eq', new_state)
+           | map(attribute='entity_id')
+           | list }}
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ targets | length > 0 }}"
+        sequence:
+          - service: >
+              {{ 'homeassistant.turn_on'
+                 if new_state == 'on'
+                 else 'homeassistant.turn_off' }}
+            target:
+              entity_id: "{{ targets }}"
