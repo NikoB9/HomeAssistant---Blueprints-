@@ -1,3 +1,4 @@
+
 blueprint:
   name: ZHA – IKEA STYRBAR – Contrôle lumière générique (appui court & long robustes)
   description: >
@@ -121,7 +122,6 @@ action:
             data:
               brightness_step_pct: "{{ -bri_step }}"
 
-  
   # Gestion des appuis longs pour variation de luminosité (répétition jusqu'au relâchement)
   - choose:
       - conditions: "{{ cid == 8 and cmd in ['move_with_on_off', 'move'] }}"
@@ -157,76 +157,91 @@ action:
                         - variables:
                             continue_long_press: false
 
-  
-  
-  # Gestion de la variation de température couleur (si supportée)
+  # =========================
+  # Gestion de la température de couleur (gauche/droite)
+  # =========================
+  # Objectif : n'agir que si la (ou les) lumière(s) supporte(nt) la CT,
+  #            sinon ignorer proprement sans erreur.
+
+  # 1) Helpers pour détecter le support CT, même pour un groupe
+  - variables:
+      # Retourne la première entité "réelle" si c'est un groupe, sinon la cible elle-même
+      _first_light: >-
+        {% set entities = expand(light) if light is string else [] %}
+        {% if entities|count > 0 %}
+          {{ entities[0].entity_id }}
+        {% else %}
+          {{ light }}
+        {% endif %}
+      # Détection générique du support CT :
+      #  - 'color_temp' dans supported_color_modes
+      #  - ou présence de bornes min/max mireds
+      _supported_color_modes: "{{ state_attr(_first_light, 'supported_color_modes') | default([], true) }}"
+      _has_min: "{{ state_attr(_first_light, 'min_mireds') is not none }}"
+      _has_max: "{{ state_attr(_first_light, 'max_mireds') is not none }}"
+      _ct_supported: >-
+        {{ 'color_temp' in _supported_color_modes
+           or 'color_temp_kelvin' in _supported_color_modes
+           or _has_min or _has_max }}
+
+      # Normalise le 1er argument du zha_event (list ou mapping)
+      first_arg: >-
+        {% set a = args %}
+        {% if a is sequence and a|length > 0 %}
+          {{ a[0] }}
+        {% elif a is mapping %}
+          {{ a.get('0', a.get(0, a.get('param1', a.get('id', none)))) }}
+        {% else %}
+          {{ none }}
+        {% endif %}
+
+      # Bornes CT robustes (si non connues, on prend 153–500 mireds)
+      _min_ct: "{{ (state_attr(_first_light, 'min_mireds') | default(153, true)) | int }}"
+      _max_ct: "{{ (state_attr(_first_light, 'max_mireds') | default(500, true)) | int }}"
+
+  # 2) Si la (ou les) lumière(s) ne supporte(nt) pas la CT → on ignore
   - choose:
-      - conditions: >-
-          {{
-            'color_temp' in (state_attr(light, 'supported_color_modes') | default([]))
-            or state_attr(light, 'min_mireds') is not none
-            or state_attr(light, 'max_mireds') is not none
-          }}
+      - conditions: "{{ not _ct_supported }}"
         sequence:
-          # Variables robustes pour la détection gauche/droite
-          - variables:
-              # Normalise le premier argument, qu'args soit une liste ou un mapping
-              first_arg: >-
-                {% set a = args %}
-                {% if a is sequence and a|length > 0 %}
-                  {{ a[0] }}
-                {% elif a is mapping %}
-                  {{ a.get('0', a.get(0, a.get('param1', a.get('id')))) }}
-                {% else %}
-                  {{ none }}
-                {% endif %}
-
-          # ➜ Gauche = plus chaud = mireds +
-          - choose:
-              - conditions: >-
-                  {{
-                    cid == 5 and cmd == 'press'
-                    and first_arg is not none
-                    and (first_arg == 257 or first_arg|string == '257')
-                  }}
-                sequence:
-                  - service: light.turn_on
-                    target:
-                      entity_id: "{{ light }}"
-                    data:
-                      color_temp: >-
-                        {%- set ct = state_attr(light, 'color_temp') -%}
-                        {%- set max_ct = state_attr(light, 'max_mireds') | default(500, true) -%}
-                        {%- set current_ct = ct if ct is not none else max_ct -%}
-                        {{ (current_ct | int + ct_step) | min(max_ct | int) }}
-
-          # ➜ Droite = plus froid = mireds -
-          - choose:
-              - conditions: >-
-                  {{
-                    cid == 5 and cmd == 'press'
-                    and first_arg is not none
-                    and (first_arg == 256 or first_arg|string == '256')
-                  }}
-                sequence:
-                  - service: light.turn_on
-                    target:
-                      entity_id: "{{ light }}"
-                    data:
-                      color_temp: >-
-                        {%- set ct = state_attr(light, 'color_temp') -%}
-                        {%- set min_ct = state_attr(light, 'min_mireds') | default(153, true) -%}
-                        {%- set current_ct = ct if ct is not none else min_ct -%}
-                        {{ (current_ct | int - ct_step) | max(min_ct | int) }}
-
-      # Sinon, si pas de support color_temp, on ignore
-      - conditions: >-
-          {{
-            not (
-              'color_temp' in (state_attr(light, 'supported_color_modes') | default([]))
-              or state_attr(light, 'min_mireds') is not none
-              or state_attr(light, 'max_mireds') is not none
-            )
-          }}
-        sequence:
+          # Pas de support température de couleur : on ne fait rien
           - delay: 0
+
+  # 3) Sinon, on traite gauche/droite (cluster 0x0005 / press / 257|256)
+      - conditions: >-
+          {{ _ct_supported }}
+        sequence:
+          # -------------------------
+          # Gauche = plus CHAUD (mireds +) -> 257
+          # -------------------------
+          - choose:
+              - conditions: >-
+                  {{ cid == 5 and cmd == 'press'
+                     and first_arg is not none
+                     and (first_arg == 257 or first_arg|string == '257') }}
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ light }}"
+                    data:
+                      color_temp: >-
+                        {%- set current_ct = state_attr(_first_light, 'color_temp') -%}
+                        {%- set base = (current_ct if current_ct is not none else _max_ct) | int -%}
+                        {{ (base + ct_step) | min(_max_ct) }}
+
+          # -------------------------
+          # Droite = plus FROID (mireds -) -> 256
+          # -------------------------
+          - choose:
+              - conditions: >-
+                  {{ cid == 5 and cmd == 'press'
+                     and first_arg is not none
+                     and (first_arg == 256 or first_arg|string == '256') }}
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ light }}"
+                    data:
+                      color_temp: >-
+                        {%- set current_ct = state_attr(_first_light, 'color_temp') -%}
+                        {%- set base = (current_ct if current_ct is not none else _min_ct) | int -%}
+                        {{ (base - ct_step) | max(_min_ct) }}
