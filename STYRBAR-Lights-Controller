@@ -178,15 +178,10 @@ action:
               entity_id: "{{ light }}"
             data:
               color_temp: >
-                {{
-                  (
-                    state_attr(light, 'color_temp')
-                    | default(state_attr(light, 'max_mireds') | default(370), true)
-                    | int
-                    + ct_step
-                  )
-                  | min(state_attr(light, 'max_mireds') | default(500))
-                }}
+                {%- set ct = state_attr(light, 'color_temp') -%}
+                {%- set max_ct = state_attr(light, 'max_mireds') | default(500) -%}
+                {%- set current_ct = ct if ct is not none else max_ct -%}
+                {{ (current_ct | int + ct_step) | min(max_ct) }}
 
       # Température couleur droite (cluster 5, press, arg=256)
       - conditions: >
@@ -197,12 +192,7 @@ action:
               entity_id: "{{ light }}"
             data:
               color_temp: >
-                {{
-                  (
-                    state_attr(light, 'color_temp')
-                    | default(state_attr(light, 'min_mireds') | default(153), true)
-                    | int
-                    - ct_step
-                  )
-                  | max(state_attr(light, 'min_mireds') | default(153))
-                }}
+                {%- set ct = state_attr(light, 'color_temp') -%}
+                {%- set min_ct = state_attr(light, 'min_mireds') | default(153) -%}
+                {%- set current_ct = ct if ct is not none else min_ct -%}
+                {{ (current_ct | int - ct_step) | max(min_ct) }}
