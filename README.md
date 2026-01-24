@@ -2,7 +2,7 @@
 
 Collection de blueprints pour Home Assistant fournis par @NikoB9.
 
-Ce dépôt contient actuellement 2 blueprints prêts à l'emploi : un contrôleur pour télécommande IKEA STYRBAR/TRÅDFRI via ZHA, et un blueprint pour synchroniser plusieurs interrupteurs/lumières.
+Ce dépôt contient actuellement 2 blueprints prêts à l'emploi : un contrôleur pour télécommande IKEA STYRBAR/TRÅDFRI via ZHA, et un blueprint pour synchroniser plusieurs interrupteurs/lumières[...]
 
 ---
 
@@ -22,8 +22,8 @@ Ce dépôt contient actuellement 2 blueprints prêts à l'emploi : un contrôleu
   - Domain : automation
   - Mode : restart
   - Utilise des triggers device ZHA pour short_press, long_press, long_release.
-- Ajout rapide (import via URL raw) :  
-  [![Ajouter dans Home Assistant](https://img.shields.io/badge/Ajouter%20dans%20Home%20Assistant-Importer-blue?style=for-the-badge&logo=home-assistant)](https://raw.githubusercontent.com/NikoB9/HomeAssistant---Blueprints/main/STYRBAR-Lights-Controller)
+- Ajout rapide (import direct dans Home Assistant) :  
+  [![Ajouter dans Home Assistant](https://img.shields.io/badge/Ajouter%20dans%20Home%20Assistant-Importer-blue?style=for-the-badge&logo=home-assistant)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FNikoB9%2FHomeAssistant---Blueprints%2Fblob%2Fmain%2FSTYRBAR-Lights-Controller)
 
 ---
 
@@ -40,20 +40,20 @@ Ce dépôt contient actuellement 2 blueprints prêts à l'emploi : un contrôleu
   - Domain : automation
   - Mode : restart (max_exceeded: silent)
   - Entrées : liste d'entités à synchroniser, debounce (ms)
-- Ajout rapide (import via URL raw) :  
-  [![Ajouter dans Home Assistant](https://img.shields.io/badge/Ajouter%20dans%20Home%20Assistant-Importer-blue?style=for-the-badge&logo=home-assistant)](https://raw.githubusercontent.com/NikoB9/HomeAssistant---Blueprints/main/Multiple-switches)
+- Ajout rapide (import direct dans Home Assistant) :  
+  [![Ajouter dans Home Assistant](https://img.shields.io/badge/Ajouter%20dans%20Home%20Assistant-Importer-blue?style=for-the-badge&logo=home-assistant)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FNikoB9%2FHomeAssistant---Blueprints%2Fblob%2Fmain%2FMultiple-switches)
 
 ---
 
 ## Instructions d'installation
 
-Méthode A — Importer depuis l'URL raw (recommandée)
+Méthode A — Importer depuis l'URL via le raccourci d'import (recommandée)
 1. Ouvrir Home Assistant.
 2. Aller dans Configuration → Automations & Scenes → Blueprints.
 3. Cliquer sur "Import Blueprint".
-4. Coller l'URL raw du blueprint :
-   - STYRBAR : `https://raw.githubusercontent.com/NikoB9/HomeAssistant---Blueprints/main/STYRBAR-Lights-Controller`
-   - Multiple-switches : `https://raw.githubusercontent.com/NikoB9/HomeAssistant---Blueprints/main/Multiple-switches`
+4. Coller l'URL d'import fournie (ex. utiliser le lien "Ajouter dans Home Assistant" ci-dessus) :
+   - STYRBAR : `https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FNikoB9%2FHomeAssistant---Blueprints%2Fblob%2Fmain%2FSTYRBAR-Lights-Controller`
+   - Multiple-switches : `https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2FNikoB9%2FHomeAssistant---Blueprints%2Fblob%2Fmain%2FMultiple-switches`
 5. Vérifier et importer. Ensuite créer une automatisation à partir du blueprint.
 
 Méthode B — Copier localement
