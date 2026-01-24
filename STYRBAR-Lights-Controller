@@ -157,56 +157,76 @@ action:
                         - variables:
                             continue_long_press: false
 
+  
+  
   # Gestion de la variation de température couleur (si supportée)
   - choose:
-      - conditions: >
+      - conditions: >-
           {{
-            state_attr(light, 'color_temp') is not none
+            'color_temp' in (state_attr(light, 'supported_color_modes') | default([]))
+            or state_attr(light, 'min_mireds') is not none
+            or state_attr(light, 'max_mireds') is not none
           }}
         sequence:
-          # Température couleur augmentation (bouton gauche)
+          # Variables robustes pour la détection gauche/droite
+          - variables:
+              # Normalise le premier argument, qu'args soit une liste ou un mapping
+              first_arg: >-
+                {% set a = args %}
+                {% if a is sequence and a|length > 0 %}
+                  {{ a[0] }}
+                {% elif a is mapping %}
+                  {{ a.get('0', a.get(0, a.get('param1', a.get('id')))) }}
+                {% else %}
+                  {{ none }}
+                {% endif %}
+
+          # ➜ Gauche = plus chaud = mireds +
           - choose:
-              - conditions: >
-                  {{ 
-                    cid == 5 and 
-                    cmd == 'press' and 
-                    args is iterable and args|length > 0 and args[0] == 257 
+              - conditions: >-
+                  {{
+                    cid == 5 and cmd == 'press'
+                    and first_arg is not none
+                    and (first_arg == 257 or first_arg|string == '257')
                   }}
                 sequence:
                   - service: light.turn_on
                     target:
                       entity_id: "{{ light }}"
                     data:
-                      color_temp: >
+                      color_temp: >-
                         {%- set ct = state_attr(light, 'color_temp') -%}
                         {%- set max_ct = state_attr(light, 'max_mireds') | default(500, true) -%}
                         {%- set current_ct = ct if ct is not none else max_ct -%}
                         {{ (current_ct | int + ct_step) | min(max_ct | int) }}
 
-          # Température couleur diminution (bouton droit)
+          # ➜ Droite = plus froid = mireds -
           - choose:
-              - conditions: >
-                  {{ 
-                    cid == 5 and 
-                    cmd == 'press' and 
-                    args is iterable and args|length > 0 and args[0] == 256 
+              - conditions: >-
+                  {{
+                    cid == 5 and cmd == 'press'
+                    and first_arg is not none
+                    and (first_arg == 256 or first_arg|string == '256')
                   }}
                 sequence:
                   - service: light.turn_on
                     target:
                       entity_id: "{{ light }}"
                     data:
-                      color_temp: >
+                      color_temp: >-
                         {%- set ct = state_attr(light, 'color_temp') -%}
                         {%- set min_ct = state_attr(light, 'min_mireds') | default(153, true) -%}
                         {%- set current_ct = ct if ct is not none else min_ct -%}
                         {{ (current_ct | int - ct_step) | max(min_ct | int) }}
 
-      # Sinon, si pas de color_temp, on ne fait rien (commentaire uniquement)
-      - conditions: >
+      # Sinon, si pas de support color_temp, on ignore
+      - conditions: >-
           {{
-            state_attr(light, 'color_temp') is none
+            not (
+              'color_temp' in (state_attr(light, 'supported_color_modes') | default([]))
+              or state_attr(light, 'min_mireds') is not none
+              or state_attr(light, 'max_mireds') is not none
+            )
           }}
         sequence:
-          # La lumière ne supporte pas la variation de température couleur, action ignorée.
-          - delay: 0  # Placeholder - pas d'action
+          - delay: 0
