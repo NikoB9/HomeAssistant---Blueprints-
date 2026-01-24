@@ -1,0 +1,189 @@
+blueprint:
+  name: ZHA – IKEA STYRBAR / TRÅDFRI – Lumière + Température
+  description: >
+    Contrôle générique d'une lumière (ou groupe) avec une télécommande IKEA STYRBAR/TRÅDFRI via ZHA.
+    - Appui court : incrément / décrément
+    - Appui long : variation progressive
+    - Allume un interrupteur si la lumière est hors tension
+  domain: automation
+
+  input:
+    remote_device:
+      name: Télécommande IKEA (ZHA)
+      selector:
+        device:
+          integration: zha
+
+    light_target:
+      name: Lumière ou groupe à contrôler
+      selector:
+        entity:
+          domain: light
+
+    power_switch:
+      name: Interrupteur d’alimentation (optionnel)
+      default: []
+      selector:
+        entity:
+          domain: switch
+
+    brightness_step:
+      name: Pas de luminosité (appui court, %)
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 50
+          unit_of_measurement: "%"
+
+    brightness_long_step:
+      name: Pas de luminosité (appui long, %)
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 20
+          unit_of_measurement: "%"
+
+    color_temp_step:
+      name: Pas température couleur (mireds)
+      default: 40
+      selector:
+        number:
+          min: 10
+          max: 200
+
+    long_press_interval:
+      name: Intervalle variation appui long (secondes)
+      default: 0.3
+      selector:
+        number:
+          min: 0.1
+          max: 1
+          step: 0.1
+
+mode: restart
+
+variables:
+  light: !input light_target
+  switch: !input power_switch
+  step_bri: !input brightness_step
+  step_bri_long: !input brightness_long_step
+  step_ct: !input color_temp_step
+  interval: !input long_press_interval
+
+trigger:
+  - platform: device
+    device_id: !input remote_device
+    domain: zha
+    type: remote_button_short_press
+
+  - platform: device
+    device_id: !input remote_device
+    domain: zha
+    type: remote_button_long_press
+
+  - platform: device
+    device_id: !input remote_device
+    domain: zha
+    type: remote_button_long_release
+
+action:
+  - variables:
+      button: "{{ trigger.event.data.command }}"
+
+  # 🔌 Assure l’alimentation si un switch est défini
+  - if:
+      - condition: template
+        value_template: >
+          {{ switch != [] and is_state(switch, 'off') }}
+    then:
+      - service: switch.turn_on
+        target:
+          entity_id: "{{ switch }}"
+
+  - choose:
+
+      # 💡 Luminosité +
+      - conditions: "{{ button == 'brightness_up' }}"
+        sequence:
+          - choose:
+              # Appui court
+              - conditions: "{{ trigger.type == 'remote_button_short_press' }}"
+                sequence:
+                  - service: light.turn_on
+                    target: { entity_id: "{{ light }}" }
+                    data:
+                      brightness_step_pct: "{{ step_bri }}"
+
+              # Appui long
+              - conditions: "{{ trigger.type == 'remote_button_long_press' }}"
+                sequence:
+                  - repeat:
+                      while:
+                        - condition: template
+                          value_template: "{{ wait.trigger is none }}"
+                      sequence:
+                        - service: light.turn_on
+                          target: { entity_id: "{{ light }}" }
+                          data:
+                            brightness_step_pct: "{{ step_bri_long }}"
+                        - delay: "{{ interval }}"
+                        - wait_for_trigger:
+                            - platform: device
+                              device_id: !input remote_device
+                              domain: zha
+                              type: remote_button_long_release
+                          timeout: "00:00:00.1"
+
+      # 💡 Luminosité –
+      - conditions: "{{ button == 'brightness_down' }}"
+        sequence:
+          - choose:
+              - conditions: "{{ trigger.type == 'remote_button_short_press' }}"
+                sequence:
+                  - service: light.turn_on
+                    target: { entity_id: "{{ light }}" }
+                    data:
+                      brightness_step_pct: "{{ -step_bri }}"
+
+              - conditions: "{{ trigger.type == 'remote_button_long_press' }}"
+                sequence:
+                  - repeat:
+                      while:
+                        - condition: template
+                          value_template: "{{ wait.trigger is none }}"
+                      sequence:
+                        - service: light.turn_on
+                          target: { entity_id: "{{ light }}" }
+                          data:
+                            brightness_step_pct: "{{ -step_bri_long }}"
+                        - delay: "{{ interval }}"
+                        - wait_for_trigger:
+                            - platform: device
+                              device_id: !input remote_device
+                              domain: zha
+                              type: remote_button_long_release
+                          timeout: "00:00:00.1"
+
+      # 🎨 Température couleur –
+      - conditions: "{{ button == 'arrow_left' }}"
+        sequence:
+          - service: light.turn_on
+            target: { entity_id: "{{ light }}" }
+            data:
+              color_temp: >
+                {{ state_attr(light, 'color_temp') | int
+                   + step_ct
+                   | min(state_attr(light, 'max_mireds') | default(500)) }}
+
+      # 🎨 Température couleur +
+      - conditions: "{{ button == 'arrow_right' }}"
+        sequence:
+          - service: light.turn_on
+            target: { entity_id: "{{ light }}" }
+            data:
+              color_temp: >
+                {{ state_attr(light, 'color_temp') | int
+                   - step_ct
+                   | max(state_attr(light, 'min_mireds') | default(153)) }}
