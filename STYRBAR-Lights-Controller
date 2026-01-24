@@ -71,108 +71,99 @@ blueprint:
           max: 1
           step: 0.05
 
-  mode: restart
+trigger:
+  - platform: event
+    event_type: zha_event
 
-  trigger:
-    - platform: event
-      event_type: zha_event
+condition:
+  - condition: template
+    value_template: "{{ trigger.event.data.device_id == remote_device.id }}"
 
-  condition:
-    - condition: template
-      value_template: "{{ trigger.event.data.device_id == remote_device.id }}"
+action:
+  - service: system_log.write
+    data:
+      message: "Trigger device_id={{ trigger.event.data.device_id }} vs remote_device.id={{ remote_device.id }}"
+      level: info
 
-  action:
-    # Log debug pour vérifier les IDs
-    - service: system_log.write
-      data:
-        message: "Trigger device_id={{ trigger.event.data.device_id }} vs remote_device.id={{ remote_device.id }}"
-        level: info
+  - variables:
+      cmd: "{{ trigger.event.data.command }}"
+      cid: "{{ trigger.event.data.cluster_id }}"
+      args: "{{ trigger.event.data.args | default([]) }}"
+      repeats: !input long_press_max_repeats
+      interval: !input long_press_interval
+      bri_step: !input brightness_step
+      bri_long: !input brightness_long_step
+      ct_step: !input color_temp_step
+      light: !input light_target
+      power: !input power_entity
 
-    - variables:
-        cmd: "{{ trigger.event.data.command }}"
-        cid: "{{ trigger.event.data.cluster_id }}"
-        args: "{{ trigger.event.data.args | default([]) }}"
-        repeats: !input long_press_max_repeats
-        interval: !input long_press_interval
-        bri_step: !input brightness_step
-        bri_long: !input brightness_long_step
-        ct_step: !input color_temp_step
-        light: !input light_target
-        power: !input power_entity
+  - if:
+      - condition: template
+        value_template: "{{ power != '' and is_state(power, 'off') }}"
+    then:
+      - service: "{{ power.split('.')[0] }}.turn_on"
+        target:
+          entity_id: "{{ power }}"
 
-    # Allume entité power si nécessaire
-    - if:
-        - condition: template
-          value_template: "{{ power != '' and is_state(power, 'off') }}"
-      then:
-        - service: "{{ power.split('.')[0] }}.turn_on"
-          target:
-            entity_id: "{{ power }}"
+  - choose:
+      - conditions: "{{ cid == 6 and cmd == 'on' }}"
+        sequence:
+          - service: light.turn_on
+            target: { entity_id: "{{ light }}" }
+            data:
+              brightness_step_pct: "{{ bri_step }}"
 
-    - choose:
+      - conditions: "{{ cid == 6 and cmd == 'off' }}"
+        sequence:
+          - service: light.turn_on
+            target: { entity_id: "{{ light }}" }
+            data:
+              brightness_step_pct: "{{ -bri_step }}"
 
-        # Appui court luminosité +
-        - conditions: "{{ cid == 6 and cmd == 'on' }}"
-          sequence:
-            - service: light.turn_on
-              target: { entity_id: "{{ light }}" }
-              data:
-                brightness_step_pct: "{{ bri_step }}"
+      - conditions: >
+          {{ cid == 8 and (cmd == 'move_with_on_off' or cmd == 'move') and args[0] == 0 }}
+        sequence:
+          - repeat:
+              while: "{{ repeat.index <= repeats }}"
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id: "{{ light }}"
+                  data:
+                    brightness_step_pct: "{{ bri_long }}"
+                - delay: "{{ interval }}"
 
-        # Appui court luminosité -
-        - conditions: "{{ cid == 6 and cmd == 'off' }}"
-          sequence:
-            - service: light.turn_on
-              target: { entity_id: "{{ light }}" }
-              data:
-                brightness_step_pct: "{{ -bri_step }}"
+      - conditions: >
+          {{ cid == 8 and (cmd == 'move_with_on_off' or cmd == 'move') and args[0] == 1 }}
+        sequence:
+          - repeat:
+              while: "{{ repeat.index <= repeats }}"
+              sequence:
+                - service: light.turn_on
+                  target:
+                    entity_id: "{{ light }}"
+                  data:
+                    brightness_step_pct: "{{ -bri_long }}"
+                - delay: "{{ interval }}"
 
-        # Appui long luminosité + (move_with_on_off or move, args[0]==0)
-        - conditions: >
-            {{ cid == 8 and (cmd=='move_with_on_off' or cmd=='move') and args[0] == 0 }}
-          sequence:
-            - repeat:
-                while: "{{ repeat.index <= repeats }}"
-                sequence:
-                  - service: light.turn_on
-                    target:
-                      entity_id: "{{ light }}"
-                    data:
-                      brightness_step_pct: "{{ bri_long }}"
-                  - delay: "{{ interval }}"
+      - conditions: >
+          {{ cid == 5 and cmd == 'press' and args|first == 257 }}
+        sequence:
+          - service: light.turn_on
+            target: { entity_id: "{{ light }}" }
+            data:
+              color_temp: >
+                {{ (state_attr(light, 'color_temp')|int + ct_step)
+                   | min(state_attr(light,'max_mireds')|default(500)) }}
 
-        # Appui long luminosité - (move_with_on_off or move, args[0]==1)
-        - conditions: >
-            {{ cid == 8 and (cmd=='move_with_on_off' or cmd=='move') and args[0] == 1 }}
-          sequence:
-            - repeat:
-                while: "{{ repeat.index <= repeats }}"
-                sequence:
-                  - service: light.turn_on
-                    target:
-                      entity_id: "{{ light }}"
-                    data:
-                      brightness_step_pct: "{{ -bri_long }}"
-                  - delay: "{{ interval }}"
+      - conditions: >
+          {{ cid == 5 and cmd == 'press' and args|first == 256 }}
+        sequence:
+          - service: light.turn_on
+            target: { entity_id: "{{ light }}" }
+            data:
+              color_temp: >
+                {{ (state_attr(light, 'color_temp')|int - ct_step)
+                   | max(state_attr(light,'min_mireds')|default(153)) }}
 
-        # Température couleur gauche
-        - conditions: >
-            {{ cid == 5 and cmd=='press' and args|first == 257 }}
-          sequence:
-            - service: light.turn_on
-              target: { entity_id: "{{ light }}" }
-              data:
-                color_temp: >
-                  {{ (state_attr(light, 'color_temp')|int + ct_step)
-                     | min(state_attr(light,'max_mireds')|default(500)) }}
-
-        # Température couleur droite
-        - conditions: >
-            {{ cid == 5 and cmd=='press' and args|first == 256 }}
-          sequence:
-            - service: light.turn_on
-              target: { entity_id: "{{ light }}" }
-              data:
-                color_temp: >
-                  {{ (state_attr(light, 'color_temp')|int - ct_step)
-                     | max(state_attr(light,'min_mireds')|default(153)) }}
+mode: restart
