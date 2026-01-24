@@ -178,7 +178,6 @@ action:
 
   # Gestion de la variation de température couleur (seulement si la lumière supporte le color_temp)
   - choose:
-      # Vérifier que la lumière a un attribut color_temp avant de gérer la variation
       - conditions: >
           {{
             state_attr(light, 'color_temp') is not none
