@@ -47,7 +47,7 @@ blueprint:
 
     color_temp_kelvin_step:
       name: Pas de température (Kelvin)
-      description: Pas fixe appliqué en Kelvin (p. ex. 250 K). Gauche = -pas (plus chaud), Droite = +pas (plus froid).
+      description: Pas fixe en Kelvin appliqué à chaque appui (ex. 250 K).
       default: 250
       selector:
         number:
@@ -66,7 +66,7 @@ blueprint:
 
     long_press_interval:
       name: Intervalle appui long (s)
-      default: 0.3
+      default: 0.05
       selector:
         number:
           min: 0.05
@@ -81,14 +81,14 @@ trigger:
 
 action:
   - variables:
-      # --- Variables communes extraites de l'event ZHA ---
+      # --- Données de l'événement ZHA ---
       device_id_remote: !input remote_device
       device_id_event: "{{ trigger.event.data.device_id }}"
       cmd: "{{ trigger.event.data.command }}"
       cid: "{{ trigger.event.data.cluster_id }}"
       args: "{{ trigger.event.data.args | default([]) }}"
 
-      # --- Paramètres d'entrée ---
+      # --- Entrées du blueprint (mises ici -> résout des soucis de portée des !input) ---
       bri_step: !input brightness_step
       bri_long: !input brightness_long_step
       repeats: !input long_press_max_repeats
@@ -101,7 +101,7 @@ action:
   - condition: template
     value_template: "{{ device_id_event == device_id_remote }}"
 
-  # Allumer l'entité d'alimentation si spécifiée et éteinte (prise/switch en amont)
+  # Allumer l'entité d'alimentation si spécifiée et éteinte (prise/switch amont)
   - if:
       - condition: template
         value_template: "{{ power != '' and is_state(power, 'off') }}"
@@ -151,7 +151,7 @@ action:
                     entity_id: "{{ light }}"
                   data:
                     brightness_step_pct: "{{ bri_long if direction == 0 else -bri_long }}"
-                # On attend soit un 'stop', soit le timeout pour enchaîner un nouveau pas
+                # On attend soit un 'stop', soit le timeout pour répéter
                 - wait_for_trigger:
                     - platform: event
                       event_type: zha_event
@@ -163,7 +163,7 @@ action:
                     new_cid: "{{ (wait.trigger.event.data.cluster_id if (wait is defined and wait.trigger is defined and wait.trigger is not none) else none) }}"
                     count_repeat: "{{ count_repeat + 1 }}"
                 - choose:
-                    # Relâchement appui long => 'stop' sur cluster Level (0x0008)
+                    # Relâchement appui long => 'stop' sur cluster 0x0008
                     - conditions: "{{ new_cmd in ['stop','stop_with_on_off'] and new_cid == 8 }}"
                       sequence:
                         - variables:
@@ -175,8 +175,10 @@ action:
   # - Agit uniquement si la (ou les) lumière(s) supporte(nt) la CT.
   # - Gauche (args[0]=257) => plus CHAUD => Kelvin diminue de kelvin_step
   # - Droite (args[0]=256) => plus FROID => Kelvin augmente de kelvin_step
+
+  # Helpers : détection du support CT, bornes Kelvin, extraction arg
   - variables:
-      # Si "light" est un groupe, on lit les attributs sur la 1ʳᵉ entité réelle
+      # Si 'light' est un groupe, lire les attributs sur la première entité réelle
       _first_light: >-
         {% set entities = expand(light) if light is string else [] %}
         {% if entities|count > 0 %}
@@ -185,9 +187,7 @@ action:
           {{ light }}
         {% endif %}
 
-      # Détection générique du support CT :
-      # - mode 'color_temp_kelvin' préféré
-      # - compat : 'color_temp' ou présence de min/max mireds
+      # Détection générique du support CT (Kelvin préféré, mireds en compat)
       _supported_modes: "{{ state_attr(_first_light, 'supported_color_modes') | default([], true) }}"
       _ct_supported: >-
         {{ 'color_temp_kelvin' in _supported_modes
@@ -195,7 +195,7 @@ action:
            or state_attr(_first_light,'min_mireds') is not none
            or state_attr(_first_light,'max_mireds') is not none }}
 
-      # Bornes Kelvin (lecture directe si existantes, sinon conversion mireds)
+      # Bornes Kelvin (lecture directe si présentes, sinon conversion mireds)
       _min_k: >-
         {% set mk = state_attr(_first_light,'min_color_temp_kelvin') %}
         {% if mk is not none %}
@@ -213,7 +213,7 @@ action:
           {{ (1000000 / (mn|float)) | round(0) | int }}
         {% endif %}
 
-      # Kelvin actuel (lecture directe si dispo, sinon conversion depuis mireds)
+      # Kelvin courant (direct si dispo, sinon conversion depuis mireds)
       _current_k: >-
         {% set ck = state_attr(_first_light,'color_temp_kelvin') %}
         {% if ck is not none %}
@@ -227,7 +227,7 @@ action:
           {% endif %}
         {% endif %}
 
-      # Normalisation de args[0] (liste ou mapping)
+      # Normalisation du premier argument (liste ou mapping)
       first_arg: >-
         {% set a = args %}
         {% if a is sequence and a|length > 0 %}
@@ -242,7 +242,12 @@ action:
   - choose:
       - conditions: "{{ not _ct_supported }}"
         sequence:
-          - delay: 0
+          # Tu peux commenter ce log une fois que tout est OK
+          - service: logbook.log
+            data:
+              name: "STYRBAR CT"
+              message: "Ignoré (pas de support CT) — light={{ light }} first={{ _first_light }}"
+              domain: automation
 
   # Sinon, traitement des appuis gauche/droite (cluster 0x0005 / 'press' / 257|256)
       - conditions: "{{ _ct_supported }}"
@@ -259,6 +264,12 @@ action:
                   - variables:
                       _base_k: "{{ (_current_k if _current_k is not none else _max_k) | int }}"
                       _next_k: "{{ [_base_k - kelvin_step, _min_k] | max }}"
+                  # Tu peux commenter ce log une fois validé
+                  - service: logbook.log
+                    data:
+                      name: "STYRBAR CT"
+                      message: "Left (257) → K: {{ _base_k }} -> {{ _next_k }} (step={{ kelvin_step }}) bounds=[{{ _min_k }}, {{ _max_k }}]"
+                      domain: automation
                   - service: light.turn_on
                     target:
                       entity_id: "{{ light }}"
@@ -277,6 +288,12 @@ action:
                   - variables:
                       _base_k: "{{ (_current_k if _current_k is not none else _min_k) | int }}"
                       _next_k: "{{ [_base_k + kelvin_step, _max_k] | min }}"
+                  # Tu peux commenter ce log une fois validé
+                  - service: logbook.log
+                    data:
+                      name: "STYRBAR CT"
+                      message: "Right (256) → K: {{ _base_k }} -> {{ _next_k }} (step={{ kelvin_step }}) bounds=[{{ _min_k }}, {{ _max_k }}]"
+                      domain: automation
                   - service: light.turn_on
                     target:
                       entity_id: "{{ light }}"
