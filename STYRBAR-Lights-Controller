@@ -94,14 +94,14 @@ action:
   - condition: template
     value_template: "{{ device_id_event == device_id_remote }}"
 
-  # Log debug
+  # Log debug pour voir la commande reçue
   - service: system_log.write
     data:
       level: info
       message: >
         Trigger device_id={{ device_id_event }} cmd={{ cmd }} cluster_id={{ cid }} args={{ args }}
 
-  # Allumer power_entity si besoin
+  # Allumer l'entité d'alimentation si spécifiée et éteinte
   - if:
       - condition: template
         value_template: "{{ power != '' and is_state(power, 'off') }}"
@@ -110,7 +110,7 @@ action:
         target:
           entity_id: "{{ power }}"
 
-  # Gestion appui court luminosité +
+  # Gestion des appuis courts pour luminosité
   - choose:
       - conditions: "{{ cid == 6 and cmd == 'on' }}"
         sequence:
@@ -128,8 +128,9 @@ action:
             data:
               brightness_step_pct: "{{ -bri_step }}"
 
-  # Gestion appui long luminosité +
+  # Gestion des appuis longs pour variation de luminosité
   - choose:
+      # Appui long luminosité +
       - conditions: >
           {{ 
             cid == 8 and 
@@ -155,7 +156,7 @@ action:
                     brightness_step_pct: "{{ bri_long }}"
                 - delay: "{{ interval }}"
 
-      # Gestion appui long luminosité -
+      # Appui long luminosité -
       - conditions: >
           {{ 
             cid == 8 and 
@@ -181,7 +182,7 @@ action:
                     brightness_step_pct: "{{ -bri_long }}"
                 - delay: "{{ interval }}"
 
-      # Arrêt appui long
+      # Arrêt appui long (fin de variation)
       - conditions: "{{ cid == 8 and cmd in ['stop', 'stop_with_on_off'] }}"
         sequence:
           - service: system_log.write
@@ -189,40 +190,61 @@ action:
               level: info
               message: "Appui long relâché - stop reçu"
 
-  # Température couleur gauche (augmentation)
+  # Gestion de la variation de température couleur (seulement si la lumière supporte le color_temp)
   - choose:
+      # Vérifier que la lumière a un attribut color_temp avant de gérer la variation
       - conditions: >
-          {{ 
-            cid == 5 and 
-            cmd == 'press' and 
-            args is iterable and args|length > 0 and args[0] == 257 
+          {{
+            state_attr(light, 'color_temp') is not none
           }}
         sequence:
-          - service: light.turn_on
-            target:
-              entity_id: "{{ light }}"
-            data:
-              color_temp: >
-                {%- set ct = state_attr(light, 'color_temp') -%}
-                {%- set max_ct = state_attr(light, 'max_mireds') | default(500, true) -%}
-                {%- set current_ct = ct if ct is not none else max_ct -%}
-                {{ (current_ct | int + ct_step) | min(max_ct | int) }}
+          # Température couleur augmentation (bouton gauche)
+          - choose:
+              - conditions: >
+                  {{ 
+                    cid == 5 and 
+                    cmd == 'press' and 
+                    args is iterable and args|length > 0 and args[0] == 257 
+                  }}
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ light }}"
+                    data:
+                      color_temp: >
+                        {%- set ct = state_attr(light, 'color_temp') -%}
+                        {%- set max_ct = state_attr(light, 'max_mireds') | default(500, true) -%}
+                        {%- set current_ct = ct if ct is not none else max_ct -%}
+                        {{ (current_ct | int + ct_step) | min(max_ct | int) }}
 
-      # Température couleur droite (diminution)
+          # Température couleur diminution (bouton droit)
+          - choose:
+              - conditions: >
+                  {{ 
+                    cid == 5 and 
+                    cmd == 'press' and 
+                    args is iterable and args|length > 0 and args[0] == 256 
+                  }}
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ light }}"
+                    data:
+                      color_temp: >
+                        {%- set ct = state_attr(light, 'color_temp') -%}
+                        {%- set min_ct = state_attr(light, 'min_mireds') | default(153, true) -%}
+                        {%- set current_ct = ct if ct is not none else min_ct -%}
+                        {{ (current_ct | int - ct_step) | max(min_ct | int) }}
+
+      # Sinon, si pas de color_temp, log et ne rien faire
       - conditions: >
-          {{ 
-            cid == 5 and 
-            cmd == 'press' and 
-            args is iterable and args|length > 0 and args[0] == 256 
+          {{
+            state_attr(light, 'color_temp') is none
           }}
         sequence:
-          - service: light.turn_on
-            target:
-              entity_id: "{{ light }}"
+          - service: system_log.write
             data:
-              color_temp: >
-                {%- set ct = state_attr(light, 'color_temp') -%}
-                {%- set min_ct = state_attr(light, 'min_mireds') | default(153, true) -%}
-                {%- set current_ct = ct if ct is not none else min_ct -%}
-                {{ (current_ct | int - ct_step) | max(min_ct | int) }}
+              level: warning
+              message: >
+                La lumière {{ light }} ne supporte pas la variation de température couleur, action ignorée.
 
