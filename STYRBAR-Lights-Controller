@@ -128,67 +128,48 @@ action:
             data:
               brightness_step_pct: "{{ -bri_step }}"
 
-  # Gestion des appuis longs pour variation de luminosité
+  # Gestion des appuis longs pour variation de luminosité (corrigé)
   - choose:
-      # Appui long luminosité +
       - conditions: >
-          {{ 
-            cid == 8 and 
-            cmd in ['move_with_on_off', 'move'] and 
-            args is iterable and args|length > 0 and args[0] == 0
-          }}
+          {{ cid == 8 and cmd in ['move_with_on_off', 'move'] and args is iterable and args|length > 0 and (args[0] == 0 or args[0] == 1) }}
         sequence:
+          - variables:
+              direction: "{{ args[0] }}"  # 0 = augmentation, 1 = diminution
           - repeat:
-              while: >
-                {{
-                  (
-                    trigger.event.data.command in ['move_with_on_off', 'move']
-                    and trigger.event.data.args is iterable
-                    and trigger.event.data.args|length > 0
-                    and trigger.event.data.args[0] == 0
-                  )
-                }}
+              count: "{{ repeats }}"
               sequence:
                 - service: light.turn_on
                   target:
                     entity_id: "{{ light }}"
                   data:
-                    brightness_step_pct: "{{ bri_long }}"
+                    brightness_step_pct: >
+                      {{ bri_long if direction == 0 else -bri_long }}
                 - delay: "{{ interval }}"
-
-      # Appui long luminosité -
-      - conditions: >
-          {{ 
-            cid == 8 and 
-            cmd in ['move_with_on_off', 'move'] and 
-            args is iterable and args|length > 0 and args[0] == 1
-          }}
-        sequence:
-          - repeat:
-              while: >
-                {{
-                  (
-                    trigger.event.data.command in ['move_with_on_off', 'move']
-                    and trigger.event.data.args is iterable
-                    and trigger.event.data.args|length > 0
-                    and trigger.event.data.args[0] == 1
-                  )
-                }}
-              sequence:
-                - service: light.turn_on
-                  target:
-                    entity_id: "{{ light }}"
-                  data:
-                    brightness_step_pct: "{{ -bri_long }}"
-                - delay: "{{ interval }}"
-
-      # Arrêt appui long (fin de variation)
-      - conditions: "{{ cid == 8 and cmd in ['stop', 'stop_with_on_off'] }}"
-        sequence:
-          - service: system_log.write
-            data:
-              level: info
-              message: "Appui long relâché - stop reçu"
+                - wait_for_trigger:
+                    - platform: event
+                      event_type: zha_event
+                      event_data:
+                        device_id: "{{ device_id_remote }}"
+                - variables:
+                    new_cmd: "{{ wait.trigger.event.data.command }}"
+                    new_args: "{{ wait.trigger.event.data.args | default([]) }}"
+                - choose:
+                    - conditions: >
+                        {{ new_cmd in ['stop', 'stop_with_on_off'] }}
+                      sequence:
+                        - service: system_log.write
+                          data:
+                            level: info
+                            message: "Appui long relâché - stop reçu"
+                        - break
+                    - conditions: >
+                        {{ not (new_cmd in ['move_with_on_off', 'move'] and new_args|length > 0 and new_args[0] == direction) }}
+                      sequence:
+                        - service: system_log.write
+                          data:
+                            level: info
+                            message: "Appui long changé ou interrompu, arrêt"
+                        - break
 
   # Gestion de la variation de température couleur (seulement si la lumière supporte le color_temp)
   - choose:
@@ -247,4 +228,3 @@ action:
               level: info
               message: >
                 La lumière {{ light }} ne supporte pas la variation de température couleur, action ignorée.
-
