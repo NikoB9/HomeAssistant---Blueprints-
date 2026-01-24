@@ -121,13 +121,14 @@ action:
             data:
               brightness_step_pct: "{{ -bri_step }}"
 
-  # Gestion des appuis longs pour variation de luminosité (sans break, avec boucle d'écoute)
+  
+  # Gestion des appuis longs pour variation de luminosité (répétition jusqu'au relâchement)
   - choose:
-      - conditions: >
-          {{ cid == 8 and cmd in ['move_with_on_off', 'move'] and args is iterable and args|length > 0 and (args[0] == 0 or args[0] == 1) }}
+      - conditions: "{{ cid == 8 and cmd in ['move_with_on_off', 'move'] }}"
         sequence:
           - variables:
-              direction: "{{ args[0] }}"  # 0 = augmentation, 1 = diminution
+              # move_with_on_off = augmentation (↑), move = diminution (↓)
+              direction: "{{ 0 if cmd == 'move_with_on_off' else 1 }}"
               continue_long_press: true
               count_repeat: 0
           - repeat:
@@ -137,29 +138,22 @@ action:
                   target:
                     entity_id: "{{ light }}"
                   data:
-                    brightness_step_pct: >
-                      {{ bri_long if direction == 0 else -bri_long }}
-                - delay: "{{ interval }}"
+                    brightness_step_pct: "{{ bri_long if direction == 0 else -bri_long }}"
+                # On attend soit un stop, soit le timeout pour faire un nouveau pas
                 - wait_for_trigger:
                     - platform: event
                       event_type: zha_event
                       event_data:
                         device_id: "{{ device_id_remote }}"
+                  timeout: "{{ interval }}"
                 - variables:
-                    new_cmd: "{{ wait.trigger.event.data.command }}"
-                    new_args: "{{ wait.trigger.event.data.args | default([]) }}"
+                    new_cmd: "{{ (wait.trigger.event.data.command if (wait is defined and wait.trigger is defined and wait.trigger is not none) else '') }}"
+                    new_cid: "{{ (wait.trigger.event.data.cluster_id if (wait is defined and wait.trigger is defined and wait.trigger is not none) else none) }}"
                     count_repeat: "{{ count_repeat + 1 }}"
                 - choose:
-                    - conditions: >
-                        {{ new_cmd in ['stop', 'stop_with_on_off'] }}
+                    # Relâchement appui long
+                    - conditions: "{{ new_cmd in ['stop','stop_with_on_off'] and new_cid == 8 }}"
                       sequence:
-                        # Appui long relâché, on arrête la boucle
-                        - variables:
-                            continue_long_press: false
-                    - conditions: >
-                        {{ not (new_cmd in ['move_with_on_off', 'move'] and new_args|length > 0 and new_args[0] == direction) }}
-                      sequence:
-                        # Appui long changé ou interrompu, on arrête la boucle
                         - variables:
                             continue_long_press: false
 
