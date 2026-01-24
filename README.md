@@ -65,33 +65,7 @@ Méthode B — Copier localement
 3. Dans Home Assistant → Blueprints, cliquer sur "Refresh" (ou recharger) et utiliser les blueprints importés.
 
 Remarques :
-- Si ton instance utilise une autre branche que `main`, remplace `main` dans les URLs raw par le nom de la branche.
 - Les fichiers fournis contiennent les inputs (`remote_device`, `light_target`, `power_switch`, etc.) — configure les champs lors de la création d'une automatisation depuis le blueprint.
-
----
-
-## Exemple d'en-tête YAML (extrait)
-Voici le type d'en‑tête que les blueprints contiennent (utile pour documentation ou pour vérifier les métadonnées) :
-
-```yaml
-blueprint:
-  name: ZHA – IKEA STYRBAR / TRÅDFRI – Lumière + Température
-  description: >
-    Contrôle générique d'une lumière (ou groupe) avec une télécommande IKEA STYRBAR/TRÅDFRI via ZHA.
-  domain: automation
-  input:
-    remote_device:
-      name: Télécommande IKEA (ZHA)
-      selector:
-        device:
-          integration: zha
-    light_target:
-      name: Lumière ou groupe à contrôler
-      selector:
-        entity:
-          domain: light
-    ...
-```
 
 ---
 
@@ -106,6 +80,3 @@ blueprint:
 Ce projet est sous licence Apache-2.0 — voir le fichier LICENSE.
 
 ---
-
-## Notes
-- J'ai laissé les noms de fichiers tels qu'ils sont dans le repo (sans extension). Si tu veux que je renomme les fichiers pour ajouter `.yaml`, je peux aussi le faire dans un commit séparé.
