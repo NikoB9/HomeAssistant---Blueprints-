@@ -65,6 +65,7 @@ blueprint:
 mode: restart
 
 variables:
+  remote: !input remote_device
   light: !input light_target
   power: !input power_entity
   bri_step: !input brightness_step
@@ -78,7 +79,7 @@ trigger:
 
 action:
   - variables:
-      remote_device_id: "{{ device_id(inputs.remote_device) }}"
+      remote_device_id: "{{ device_id(remote) }}"
       command: "{{ trigger.event.data.command }}"
 
 action:
