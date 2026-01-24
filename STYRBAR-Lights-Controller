@@ -157,6 +157,7 @@ action:
                         - variables:
                             continue_long_press: false
 
+  
   # =========================
   # Gestion de la température de couleur (gauche/droite)
   # =========================
@@ -226,7 +227,7 @@ action:
                       color_temp: >-
                         {%- set current_ct = state_attr(_first_light, 'color_temp') -%}
                         {%- set base = (current_ct if current_ct is not none else _max_ct) | int -%}
-                        {{ (base + ct_step) | min(_max_ct) }}
+                        {{ [base + ct_step, _max_ct] | min }}
 
           # -------------------------
           # Droite = plus FROID (mireds -) -> 256
@@ -244,4 +245,4 @@ action:
                       color_temp: >-
                         {%- set current_ct = state_attr(_first_light, 'color_temp') -%}
                         {%- set base = (current_ct if current_ct is not none else _min_ct) | int -%}
-                        {{ (base - ct_step) | max(_min_ct) }}
+                        {{ [base - ct_step, _min_ct] | max }}
