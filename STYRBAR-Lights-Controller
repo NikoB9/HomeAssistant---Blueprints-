@@ -1,9 +1,8 @@
 blueprint:
-  name: ZHA – IKEA STYRBAR – Contrôle lumière générique
+  name: ZHA – IKEA STYRBAR – Contrôle lumière générique (sans helpers)
   description: >
     Blueprint ZHA générique pour télécommande IKEA STYRBAR / TRÅDFRI.
-    Incrément/décrément luminosité et température couleur.
-    Supporte une entité d’alimentation optionnelle (light ou switch).
+    Appui court, long et relâchement gérés sans helpers externes.
   domain: automation
 
   input:
@@ -53,86 +52,121 @@ blueprint:
           min: 10
           max: 200
 
+    long_press_max_repeats:
+      name: Max répétitions appui long
+      description: >
+        Limite de sécurité pour boucle si jamais stop n'est pas reçue.
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 500
+
     long_press_interval:
       name: Intervalle appui long (s)
       default: 0.3
       selector:
         number:
-          min: 0.1
+          min: 0.05
           max: 1
-          step: 0.1
+          step: 0.05
 
-mode: restart
+  mode: restart
 
-variables:
-  remote: !input remote_device
-  light: !input light_target
-  power: !input power_entity
-  bri_step: !input brightness_step
-  bri_long: !input brightness_long_step
-  ct_step: !input color_temp_step
-  interval: !input long_press_interval
+  trigger:
+    - platform: event
+      event_type: zha_event
 
-trigger:
-  - platform: event
-    event_type: zha_event
+  condition:
+    - condition: template
+      value_template: "{{ trigger.event.data.device_id == device_id(remote_device) }}"
 
-condition:
-  - condition: template
-    value_template: >
-      {{ trigger.event.data.device_id == device_id(remote) }}
+  action:
+    - variables:
+        cmd: "{{ trigger.event.data.command }}"
+        cid: "{{ trigger.event.data.cluster_id }}"
+        args: "{{ trigger.event.data.args | default([]) }}"
+        repeats: !input long_press_max_repeats
+        interval: !input long_press_interval
+        bri_step: !input brightness_step
+        bri_long: !input brightness_long_step
+        ct_step: !input color_temp_step
+        light: !input light_target
+        power: !input power_entity
 
-action:
-  - variables:
-      command: "{{ trigger.event.data.command }}"
+    # Allume entité power si nécessaire
+    - if:
+        - condition: template
+          value_template: "{{ power != '' and is_state(power, 'off') }}"
+      then:
+        - service: "{{ power.split('.')[0] }}.turn_on"
+          target:
+            entity_id: "{{ power }}"
 
-  # 🔌 Alimentation si définie
-  - if:
-      - condition: template
-        value_template: >
-          {{ power != '' and states(power) == 'off' }}
-    then:
-      - service: >
-          {{ power.split('.')[0] }}.turn_on
-        target:
-          entity_id: "{{ power }}"
+    - choose:
 
-  - choose:
+        # Appui court luminosité +
+        - conditions: "{{ cid == 6 and cmd == 'on' }}"
+          sequence:
+            - service: light.turn_on
+              target: { entity_id: "{{ light }}" }
+              data:
+                brightness_step_pct: "{{ bri_step }}"
 
-      # 💡 Luminosité +
-      - conditions: "{{ command == 'brightness_up' }}"
-        sequence:
-          - service: light.turn_on
-            target: { entity_id: "{{ light }}" }
-            data:
-              brightness_step_pct: "{{ bri_step }}"
+        # Appui court luminosité -
+        - conditions: "{{ cid == 6 and cmd == 'off' }}"
+          sequence:
+            - service: light.turn_on
+              target: { entity_id: "{{ light }}" }
+              data:
+                brightness_step_pct: "{{ -bri_step }}"
 
-      # 💡 Luminosité –
-      - conditions: "{{ command == 'brightness_down' }}"
-        sequence:
-          - service: light.turn_on
-            target: { entity_id: "{{ light }}" }
-            data:
-              brightness_step_pct: "{{ -bri_step }}"
+        # Appui long luminosité + (move_with_on_off or move, args[0]==0)
+        - conditions: >
+            {{ cid == 8 and (cmd=='move_with_on_off' or cmd=='move') and args[0] == 0 }}
+          sequence:
+            - repeat:
+                while: "{{ repeat.index <= repeats }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ light }}"
+                    data:
+                      brightness_step_pct: "{{ bri_long }}"
+                  - delay: "{{ interval }}"
 
-      # 🎨 Température couleur –
-      - conditions: "{{ command == 'arrow_left' }}"
-        sequence:
-          - service: light.turn_on
-            target: { entity_id: "{{ light }}" }
-            data:
-              color_temp: >
-                {{ state_attr(light, 'color_temp') | int
-                   + ct_step
-                   | min(state_attr(light, 'max_mireds') | default(500)) }}
+        # Appui long luminosité - (move_with_on_off or move, args[0]==1)
+        - conditions: >
+            {{ cid == 8 and (cmd=='move_with_on_off' or cmd=='move') and args[0] == 1 }}
+          sequence:
+            - repeat:
+                while: "{{ repeat.index <= repeats }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: "{{ light }}"
+                    data:
+                      brightness_step_pct: "{{ -bri_long }}"
+                  - delay: "{{ interval }}"
 
-      # 🎨 Température couleur +
-      - conditions: "{{ command == 'arrow_right' }}"
-        sequence:
-          - service: light.turn_on
-            target: { entity_id: "{{ light }}" }
-            data:
-              color_temp: >
-                {{ state_attr(light, 'color_temp') | int
-                   - ct_step
-                   | max(state_attr(light, 'min_mireds') | default(153)) }}
+        # Température couleur gauche
+        - conditions: >
+            {{ cid == 5 and cmd=='press' and args|first == 257 }}
+          sequence:
+            - service: light.turn_on
+              target: { entity_id: "{{ light }}" }
+              data:
+                color_temp: >
+                  {{ (state_attr(light, 'color_temp')|int + ct_step)
+                     | min(state_attr(light,'max_mireds')|default(500)) }}
+
+        # Température couleur droite
+        - conditions: >
+            {{ cid == 5 and cmd=='press' and args|first == 256 }}
+          sequence:
+            - service: light.turn_on
+              target: { entity_id: "{{ light }}" }
+              data:
+                color_temp: >
+                  {{ (state_attr(light, 'color_temp')|int - ct_step)
+                     | max(state_attr(light,'min_mireds')|default(153)) }}
