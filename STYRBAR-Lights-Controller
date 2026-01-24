@@ -244,7 +244,7 @@ action:
         sequence:
           - service: system_log.write
             data:
-              level: warning
+              level: info
               message: >
                 La lumière {{ light }} ne supporte pas la variation de température couleur, action ignorée.
 
