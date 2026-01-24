@@ -106,7 +106,7 @@ action:
             data:
               brightness_step_pct: "{{ bri_step }}"
 
-      # ���� Luminosité –
+      # 💡 Luminosité –
       - conditions: "{{ command == 'brightness_down' }}"
         sequence:
           - service: light.turn_on
