@@ -79,9 +79,15 @@ blueprint:
 
   condition:
     - condition: template
-      value_template: "{{ trigger.event.data.device_id == device_id(remote_device) }}"
+      value_template: "{{ trigger.event.data.device_id == remote_device.id }}"
 
   action:
+    # Log debug pour vérifier les IDs
+    - service: system_log.write
+      data:
+        message: "Trigger device_id={{ trigger.event.data.device_id }} vs remote_device.id={{ remote_device.id }}"
+        level: info
+
     - variables:
         cmd: "{{ trigger.event.data.command }}"
         cid: "{{ trigger.event.data.cluster_id }}"
