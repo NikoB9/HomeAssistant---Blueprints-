@@ -77,12 +77,12 @@ trigger:
 
 condition:
   - condition: template
-    value_template: "{{ trigger.event.data.device_id == remote_device.id }}"
+    value_template: "{{ trigger.event.data.device_id == device_id(remote_device) }}"
 
 action:
   - service: system_log.write
     data:
-      message: "Trigger device_id={{ trigger.event.data.device_id }} vs remote_device.id={{ remote_device.id }}"
+      message: "Trigger device_id={{ trigger.event.data.device_id }} vs remote_device.id={{ device_id(remote_device) }}"
       level: info
 
   - variables:
