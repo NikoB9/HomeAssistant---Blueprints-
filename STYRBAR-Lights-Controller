@@ -71,7 +71,6 @@ variables:
   bri_long: !input brightness_long_step
   ct_step: !input color_temp_step
   interval: !input long_press_interval
-  remote_device_id: "{{ device_id(remote_device) }}"
 
 trigger:
   - platform: event
@@ -80,7 +79,7 @@ trigger:
 condition:
   - condition: template
     value_template: >
-      {{ trigger.event.data.device_id == remote_device_id }}
+      {{ trigger.event.data.device_id == device_id(!input remote_device) }}
 
 action:
   - variables:
